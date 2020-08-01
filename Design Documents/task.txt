@@ -1,0 +1,8 @@
+power button
+reset button
+smoke sensor
+rotator finalize
+             ultrasonic 
+water insert 
+water drain
+
