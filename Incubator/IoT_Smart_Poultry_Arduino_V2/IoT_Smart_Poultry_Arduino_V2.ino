@@ -2,6 +2,7 @@
 #include <Servo.h>
 #include <Stepper.h> // Include the header file
 #include <DHT.h>
+#include <LiquidCrystal.h>
 #define DHTPIN1 26
 
 #define DHTPIN2 27
@@ -9,6 +10,9 @@
 
 DHT dht1=DHT(DHTPIN1,DHTTYPE);
 DHT dht2=DHT(DHTPIN2,DHTTYPE);
+// Create an LCD object. Parameters: (RS, E, D4, D5, D6, D7):(2, 3, 4, 5, 6, 7);
+LiquidCrystal lcd = LiquidCrystal(7,6,11,10,9,8);
+
 
 const int stepsPerRevolution = 2048;  // change this to fit the number of steps per revolution
 int light=13;
@@ -37,7 +41,11 @@ void setup() {
     // put your setup code here, to run once:
    Serial.begin(9600);
   // Serial1.begin(9600);
-      
+       // Specify the LCD's number of columns and rows. Change to (20, 4) for a 20x4 LCD:
+  lcd.begin(16, 2);
+    lcd.setCursor(2, 0);
+  // Print the string 'Hello World!':
+  lcd.print("Self Test");
    //Serial.println("Serial monitor started...");
     dht1.begin();
     dht2.begin();
@@ -54,13 +62,15 @@ void setup() {
    
    Serial.println(Distance());
 
-     myStepper.step(-800);
+   //  myStepper.step(-800);
      
-   float d=Distance();
+   float d=(Distance()+Distance())/2;
    while(d>=5)
    {
-    myStepper.step(1);//bring back to initial position
-    d=Distance();
+    myStepper.step(3);//bring back to initial position
+    lcd.setCursor(2, 1);
+    lcd.print(String(d));
+    d=(Distance()+Distance())/2;
    }
   // myStepper.step(-1024-512);
    eggRotatorState=0;
@@ -72,12 +82,12 @@ void setup() {
    myservo1.attach(22); 
 
    // scale it to use it with the servo (value between 0 and 180)
-   myservo1.write(154); // max close
+   myservo1.write(153); // max close
    delay(1000);
-   myservo1.write(60); //  max open
+   myservo1.write(70); //  max open
    delay(1000);
 
-   myservo1.write(154); //  max close
+   myservo1.write(153); //  max close
 
 
       // scale it to use it with the servo (value between 0 and 180)
@@ -91,7 +101,7 @@ void setup() {
    myservo2.write(169); // max close
 
  // digitalWrite(light,HIGH);
-  digitalWrite(fan,HIGH);
+  digitalWrite(fan,LOW);
   fanState=1;
   
   humidifierState=0;  
@@ -117,6 +127,7 @@ float Distance()
 void loop() {
       //Serial.println("Reading DTH ");
     float distance=Distance();
+    
     delay(1000);
     //get temperature and humidity values and compute temperature average
     float humi=dht1.readHumidity();
@@ -124,7 +135,8 @@ void loop() {
     float tempF=dht1.readTemperature(true);
     float tempF2=dht2.readTemperature(true);
      float tempC2=dht2.readTemperature();
-   
+   lcd.setCursor(0, 0);
+  
     //Serial.println("Humidity: ");
     //Serial.println(humi);
    // Serial.println("Temperature");
@@ -136,7 +148,7 @@ void loop() {
     humidity=humi;
     temperature=avg;
     temperatureC=avgC;
-    
+     lcd.print(String(avg)+"F  H:"+String(humi));
     if (avg>=99.5)
     {
      digitalWrite(light,LOW);
