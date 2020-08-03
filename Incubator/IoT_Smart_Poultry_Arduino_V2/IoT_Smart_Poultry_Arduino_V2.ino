@@ -1,7 +1,12 @@
 #include <Servo.h>
 #include <Stepper.h> // Include the header file
-#include <DHT.h>
+#include <DHT.h> 
 #include <LiquidCrystal.h>
+//#include <DueTimer.h>
+
+unsigned long beginTime;
+String execProfile="chicken";
+
 #define DHTPIN1 26
 
 #define DHTPIN2 27
@@ -22,20 +27,21 @@ int uEchoPin=28;//green
    Servo myservo1; // create servo object to control a servo
    Servo myservo2; // create servo object to control a servo
    Stepper myStepper=Stepper(stepsPerRevolution, 42, 46,44,48);
-   
    int potpin = 0; // analog pin used to connect the potentiometer
    int val; // variable to read the value from the analog pin
    bool doorOpen;
-
+   
 // serial data
 String esp_output;
 float humidity, temperature, temperatureC;
 int fanState, lightState,windowsState,eggRotatorState,humidifierState;
-
+int incomingByte = 0; // for incoming serial data
 String msg="";
 
 //function setup 
 void setup() {
+   //noInterrupts();       
+  
     // put your setup code here, to run once:
    Serial.begin(9600);
   // Serial1.begin(9600);
@@ -61,22 +67,17 @@ void setup() {
    //Serial.println(Distance());
 
      myStepper.step(-800);
-     
+         lcd.setCursor(2, 1);
+  // Print the string 'Hello World!':
+  lcd.print("Calibrating");
     float d=(Distance()+Distance())/2;
-   while(d>=5)
-   {
-    myStepper.step(3);//bring back to initial position
-    lcd.setCursor(2, 1);
-    lcd.print(String(d));
-    d=(Distance()+Distance())/2;
-   }
-  // myStepper.step(-1024-512);
-   //myStepper.step(-1024);
+    GoToStepperPosition(5.0);
+
    eggRotatorState=0;
-   //Serial.println(Distance());
-   //delay(3000);
-   //myStepper.step(1024);
+
    eggRotatorState=1;
+   lcd.setCursor(0, 1);
+     lcd.print("Window A Test        ");
    myservo1.attach(22); 
 
    // scale it to use it with the servo (value between 0 and 180)
@@ -86,7 +87,8 @@ void setup() {
    delay(1000);
 
    myservo1.write(153); //  max close
-
+ lcd.setCursor(0, 1);
+     lcd.print("Window B Test        ");
 
       // scale it to use it with the servo (value between 0 and 180)
     myservo2.attach(24); 
@@ -97,24 +99,32 @@ void setup() {
 
    delay(1000);
    myservo2.write(169); // max close
-
- // digitalWrite(light,HIGH);
-  digitalWrite(fan,HIGH);
+     lcd.setCursor(0, 1);
+     lcd.print("Light on        ");
+ LightOn(true);
+ delay(2000);
+ lcd.print("Light Off        ");
+ LightOn(false);
+ lcd.setCursor(0, 1);
+ lcd.print("Fan Off        ");
+ digitalWrite(fan,HIGH);
+ delay(2000);
+ lcd.setCursor(0, 1);
+ lcd.print("Test Complete        ");
   fanState=1;
-  
   humidifierState=0;  
- // delay(3000);
- // digitalWrite(light,LOW);
- // digitalWrite(fan,LOW);
+lcd.clear();
 }
 
 float Distance()
 {
+  delay(10);
   digitalWrite(uTrigPin,LOW);
   delay(2);
   digitalWrite(uTrigPin,HIGH);
   delay(10);
   digitalWrite(uTrigPin,LOW);
+
   float duration=pulseIn(uEchoPin,HIGH);
   float distance=(duration*0.0343)/2;
   //Serial.print("distance: ");
@@ -122,78 +132,443 @@ float Distance()
   return distance;
   
 }
-void loop() {
-      //Serial.println("Reading DTH ");
-      float distance=Distance();
-    delay(1000);
-    //get temperature and humidity values and compute temperature average
-    float humi=dht1.readHumidity();
-    float tempC=dht1.readTemperature();
-    float tempF=dht1.readTemperature(true);
-    float tempF2=dht2.readTemperature(true);
-     float tempC2=dht2.readTemperature();
-      lcd.setCursor(0, 0);
-    //Serial.println("Humidity: ");
-    //Serial.println(humi);
-   // Serial.println("Temperature");
-    //Serial.println(tempC);
-      //Serial.println(tempF);
-      // Serial.println(tempF2);
-    float avg=(tempF+tempF2)/2;
-    float avgC=(tempC+tempC2)/2;
-    humidity=humi;
-    temperature=avg;
-    temperatureC=avgC;
-     lcd.print(String(avg)+"F  H:"+String(humi));
+bool GoToStepperPosition(float f)
+{
+  if (f<4.0 || f>13.0)
+{  return false;
+}
+  float StartingDistance=(Distance()+Distance())/2;
+  float targetDistance=StartingDistance-f;
+  int CurrentStep=0;
+  int errorCounter=1;
+  if (targetDistance>0)
+  {
+    CurrentStep=3;
+  }
+  else
+  {
+    CurrentStep=-3;
+  }
+  float currentPos=StartingDistance;
+  float lastDistance=0;
+       while(abs(currentPos-f)>0.1)
+   {
     
-    if (avg>=99.5)
+    targetDistance=currentPos-f;
+       if (targetDistance>0)
     {
-     digitalWrite(light,LOW);
-    // digitalWrite(fan,LOW);
-     lightState=0;
+      CurrentStep=3;
     }
     else
     {
-      digitalWrite(light,HIGH);
-     // digitalWrite(fan,HIGH);
-     lightState=1;
+      CurrentStep=-3;
     }
-    if (humi>50)
+    myStepper.step(CurrentStep);
+    float error=4.0;//initial false value
+    float measure=0.0;
+    int i=0;
+
+    for (i=0;i<=10;i++)
     {
-      if (!doorOpen){
-       myservo1.write(60); //  max open
-       myservo2.write(90); //  max open
-       doorOpen=true;
-       windowsState=1;
+      float measure=(Distance());
+      error=abs(currentPos-measure);
+      if (error<=(errorCounter*0.12))
+      {
+       // Serial.print("less error");
+        currentPos=measure;
+        break;
       }
     }
-    else if (humi<45)
+    if (i>=10)
     {
+      errorCounter++;
+    }
+    
+
+   
+    //lcd.setCursor(2, 1);
+    //lcd.print(String(currentPos));
+    
+   }
+}
+String currentPos="begin";
+void EggRotate()
+{
+  if (currentPos=="begin")
+  {
+    GoToStepperPosition(12.0);
+    currentPos="end";
+    
+  }
+  else
+  {
+    GoToStepperPosition(5.0);
+    currentPos="begin";
+  }
+}
+
+String currentState="off";
+int RunningSpan=300;
+int RotationTime=30;
+int RotationSpan=240;
+float tempThreshold=100.5;
+float humidityThreshold=55.0;
+int windowTimer=300;
+int windowSpan=10;
+void LightOn(bool state)
+{
+  if (state && lightState==0)
+  {
+         digitalWrite(light,HIGH);
+       lightState=1;
+  }
+  else if (!state && lightState==1)
+  {
+         digitalWrite(light,LOW);
+       lightState=0;
+  }
+}
+
+void SwitchOff()
+{
+    if (doorOpen)
+          {
+            myservo1.write(153); //  max close
+            myservo2.write(168); // max close
+            doorOpen=false;
+            windowsState=0;
+          }
+     LightOn(false);
+     //lcd.clear();
+}
+int loopCounter=0;
+
+void loop() {
+
+loopCounter++;
+
+        if (Serial.available() > 0) {
+          int cmd=Serial.parseInt();
+          switch(cmd)
+          {
+            case 1://start
+             if (currentState!="off")
+            {
+            return;//avoid double running command
+            }
+            if (execProfile=="test")
+            {
+              RunningSpan=300;
+              RotationTime=30;
+              RotationSpan=240;
+              tempThreshold=100.5;
+              humidityThreshold=55.0;
+              windowTimer=50;
+              windowSpan=10;
+            }
+            else if (execProfile=="chick")
+            {
+              RunningSpan=60*60*24*21;//seconds
+              RotationTime=60*60*4;
+              RotationSpan=60*60*24*17;
+              tempThreshold=100.5;
+              humidityThreshold=55.0;
+              windowTimer=60*3;
+              windowSpan=20;
+            }
+            else
+            {
+              return;
+            }
+            lcd.clear();
+            currentState="heat";
+            beginTime= millis();
+            break;
+            case 2://reset
+            beginTime= millis();
+            currentState="off";
+            break;
+            case 3://off
+            currentState="off";
+            SwitchOff();
+            
+           // Timer1.stop();
+            break;
+          
+            case 4://test
+  
+            if (currentState="off")
+            {
+                execProfile="test";
+            }
+            break;
+            case 5://chicken
+             if (currentState="off")
+            {
+            execProfile="chick";
+            }
+            break;
+            default:
+            lcd.clear();
+          }
+
+  
+    }
+    if( Serial.available())
+    {
+    float d = Serial.parseFloat();
+    if (d>0)
+    {
+      Serial.print("I received: ");
+      Serial.println(String(d));
+      GoToStepperPosition(d);
+      lcd.clear();
+      Serial.println("done positin");
+    }
+    }
+  unsigned long  currentTime= (millis()-beginTime)/1000;
+  
+  bool FlipFlop=false;
+ if ((millis()-beginTime)%1000==00)
+ {
+  FlipFlop=true;
+  
+ }
+ else
+ {
+  FlipFlop=false;
+ }
+      float avg=0.0;
+      float avgC=0.0;
+      float humi=0.0;
+  if (currentState=="heat")
+  {
+     if (FlipFlop)
+     {
+      LightOn(true);
+       humi=dht1.readHumidity();
+      float tempC=dht1.readTemperature();
+      float tempF=dht1.readTemperature(true);
+      float tempF2=dht2.readTemperature(true);
+       float tempC2=dht2.readTemperature();
+       avg=(tempF+tempF2)/2;
+       avgC=(tempC+tempC2)/2;
+      humidity=humi;
+      temperature=avg;
+      temperatureC=avgC;
+      if (avg>=(tempThreshold-0.5))
+      {
+        currentState="run";
+        beginTime=millis();
+      }
+     }
+  }
+  else if (currentState=="run")
+  {
+    if ( currentTime>RotationSpan)
+      {
+        currentState="hatch";
+         if (execProfile=="test")
+                {
+                  RunningSpan=300;
+                  RotationTime=5000;
+                  RotationSpan=240;
+                  tempThreshold=100.5;
+                  humidityThreshold=70.0;
+                  windowTimer=50;
+                  windowSpan=15;
+                }
+                else if (execProfile=="chicken")
+                {
+                  RunningSpan=60*60*24*21;//seconds
+                  RotationTime=60*60*20000000;//make the length useless
+                  RotationSpan=60*60*24*17;
+                  tempThreshold=100.5;
+                  humidityThreshold=70.0;
+                  windowTimer=60*3;
+                  windowSpan=15;
+                }
+      }
+
+     
+     if (currentTime%RotationTime==0)
+     {
+      EggRotate();
+     }
+     
+     if (currentTime%windowTimer==0)
+     {
+        if (!doorOpen)
+        {
+           myservo1.write(70); //  max open
+           myservo2.write(100); //  max open
+           doorOpen=true;
+           windowsState=1;
+        }
+     }
+     if (doorOpen)
+          {
+     if (currentTime%windowSpan==0)
+     {
+          
+            myservo1.write(153); //  max close
+            myservo2.write(168); // max close
+            doorOpen=false;
+            windowsState=0;
+          }
+     }
+     if (FlipFlop)
+     {
+       humi=dht1.readHumidity();
+      float tempC=dht1.readTemperature();
+      float tempF=dht1.readTemperature(true);
+      float tempF2=dht2.readTemperature(true);
+       float tempC2=dht2.readTemperature();
+       avg=(tempF+tempF2)/2;
+       avgC=(tempC+tempC2)/2;
+      humidity=humi;
+      temperature=avg;
+      temperatureC=avgC;
+      
+      
+      if (avg>=(tempThreshold-0.5))
+      {
+        
+          LightOn(false);
+      }
+      else
+      {
+       
+         LightOn(true);
+      }
+      if (humi>(humidityThreshold+5))
+      {
+      
+      }
+      else if (humi<(humidityThreshold-5))
+      {
+        
+      }
+       }
+        //Monitor serial communication
+    
+         
+    }
+    else if (currentState=="hatch")
+    {
+          if ( currentTime>RunningSpan)
+    {
+    currentState="off";
+       SwitchOff();
+              return;
+    }
+      
+       if (currentTime%windowTimer==0)
+         {
+          if (!doorOpen)
+          {
+             myservo1.write(70); //  max open
+             myservo2.write(100); //  max open
+             doorOpen=true;
+             windowsState=1;
+          }
+         }
+          if (doorOpen)
+            {
+           if (currentTime%windowSpan==0)
+           {
+             
+                myservo1.write(153); //  max close
+                myservo2.write(168); // max close
+                doorOpen=false;
+                windowsState=0;
+              }
+         }
+         if (FlipFlop)
+         {
+         humi=dht1.readHumidity();
+        float tempC=dht1.readTemperature();
+        float tempF=dht1.readTemperature(true);
+        float tempF2=dht2.readTemperature(true);
+         float tempC2=dht2.readTemperature();
+         avg=(tempF+tempF2)/2;
+         avgC=(tempC+tempC2)/2;
+        humidity=humi;
+        temperature=avg;
+        temperatureC=avgC;
+     
+        
+        if (avg>=tempThreshold-0.5)
+        {
+          
+           
+           LightOn(false);
+        }
+        else
+        {
+          
+          LightOn(true);
+        }
+        if (humi>(humidityThreshold+5))
+        {
+        
+        }
+        else if (humi<(humidityThreshold-5))
+        {
+          
+        }
+       }
+  }
+  else
+  {
+    SwitchOff();
+  }
+  if (FlipFlop)
+  {
+    String t="";
+    if ( currentState=="heat")
+    {
+       t=" M"+String(currentTime/60);
+    }
+    else if( currentState!="off")
+    {
+      t=" M"+String( (RunningSpan/60)- currentTime/60);
+    }
+    
+    String top=execProfile+":"+currentState+t;
+    
+    for (int i =top.length();i<=16;i++)
+    {
+      top+=" ";
+    }
+    lcd.setCursor(0, 0);
+    lcd.print(top);
+      msg=String(temperature);
+      msg+=" "+String(temperatureC);
+      msg+=" "+String(humidity);          
+      msg+=" "+String(fanState);
+      msg+=" "+String(lightState);
+      msg+=" "+String(eggRotatorState);
+      msg+=" "+String(windowsState);
+      msg+=" "+String(humidifierState); 
+      //Serial.println("message:");
+      Serial.println(msg);
+      String states="T:"+String(avg)+"H:"+String((int)humi);
       if (doorOpen)
       {
-      myservo1.write(154); //  max close
-      myservo2.write(169); // max close
-      doorOpen=false;
-      windowsState=0;
+        states=states+"W";
       }
-    }
-
+      if (lightState==1)
+      {
+        states=states+"L";
+      }
+      if (fanState==1)
+      {
+        states=states+"F";
+      }
       
-      
-      //Monitor serial communication
+      lcd.setCursor(0, 1);
+      lcd.print(states);
+  }
   
-            msg=String(temperature);
-            msg+=" "+String(temperatureC);
-            msg+=" "+String(humidity);          
-            msg+=" "+String(fanState);
-            msg+=" "+String(lightState);
-            msg+=" "+String(eggRotatorState);
-            msg+=" "+String(windowsState);
-           msg+=" "+String(humidifierState); 
-            //Serial.println("message:");
-            Serial.println(msg);
-           // Serial1.print(msg);
-            //if(Serial1.available()) Serial1.print(msg);
-            //if(Serial2.available()) Serial2.print(msg);
-            //if(Serial3.available()) Serial3.print(msg);
 }
