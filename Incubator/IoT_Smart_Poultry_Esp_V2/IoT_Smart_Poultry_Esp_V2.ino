@@ -1,5 +1,5 @@
 // Relays sensor readings from arduino to an IoT server
-// by: Stephan Ofosuhene
+// by: Emmanuel Agossou
  
 // ======= flush the serial before sending data to remove old data ==============
 //#include <ESP8266WiFi.h>
@@ -10,6 +10,12 @@ SoftwareSerial mySerial1(0,4); //Rx,Tx pins // Rx, TX
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <PubSubClient.h>
+
+#include <Wire.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+#include <HTTPClient.h>
+
 const char* ssid     = "manu";
 const char* password = "living2020";
 
@@ -20,18 +26,40 @@ String apiKey = "CSXUL887Y7O40MJB"; // api for Thingspeak write
 const char* serverThinkspeak = "api.thingspeak.com";
 String output; // outpout on webpage
 float humidity, temperature, temperatureC;
-int fanState,lightState,windowsState,eggRotatorState,humidifierState;
+int fanState,lightState,windowsState,eggRotatorState,humidifierState,flameOdor;
 WiFiServer server(80);
 //WebServer server;
 // for MQTT
 #define mqtt_port 1883
-#define MQTT_USER "mqtt username"
-#define MQTT_PASSWORD "mqtt password"
+#define mqtt_server "broker.hivemq.com"
+#define MQTT_USER "smartpoultry"
+#define MQTT_PASSWORD "smartpoultry"
 #define MQTT_SERIAL_PUBLISH_CH "/ic/esp32/serialdata/uno/"
 
-WiFiClient client;
+//****** For the online webplatform *********************************************
+char status;
+// Define NTP Client to get time
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP);
+ 
+// Variables to save date and time
+String formattedDate;
+String dayStamp;
+String timeStamp;
+String dateTime;
+// REPLACE with your Domain name and URL path or IP address with path
+const char* serverName = "http://smartpoultry.atwebpages.com/post-data.php";
+// Keep this API Key value to be compatible with the PHP code provided in the project page. 
+// If you change the apiKeyValue value, the PHP file /post-esp-data.php also needs to have the same key 
+String apiKeyValue = "tPmAT5Ab3j7F9";  //The apiKeyValue is just a random string that you can modify. It’s used for security reasons, so only anyone that knows your API key can publish data to your database
+String groupName = "Smart_Poultry";
+String location = "HIH";
+//**********************************************************
 
-//PubSubClient client(wifiClient);
+
+WiFiClient client;
+//WiFiClient MQTTclient;
+//PubSubClient client(MQTTclient);
 
 
 
@@ -55,7 +83,14 @@ void setup() {
 
       mySerial1.begin(9600);
 
-     
+     // Initialize a NTPClient to get time
+          timeClient.begin();
+          // Set offset time in seconds to adjust for your timezone, for example:
+          // GMT +1 = 3600
+          // GMT +8 = 28800
+          // GMT -1 = -3600
+          // GMT 0 = 0
+          timeClient.setTimeOffset(32400);
    
 }
  
@@ -104,6 +139,8 @@ void loop() {
   eggRotatorState=atoi(newString[4]);
   windowsState=atoi(newString[5]);
    humidifierState=atoi(newString[6]);
+   //flameOdor=atoi(newString[7]);
+   flameOdor=0;
     Serial.println("");
    Serial.print("temp:");
     Serial.println(temperatureC);
@@ -118,12 +155,19 @@ void loop() {
   output+="eggRotatorState:"+String(eggRotatorState);
   output+="windowsState:"+String(windowsState);
   output+="humidifierState:"+String(humidifierState);
+  output+="flameOdor:"+String(flameOdor);
   //serve the data as plain text, for example
   //server.send(200,"text/plain",output);
 
 
-   //send data to Thingspeak
-  sendDataToThingSpeak();
+	   //send data to Thingspeak
+	  sendDataToThingSpeak();
+	  
+	  //send data to the Online Platforme at http://smartpoultry.atwebpages.com/
+	  sendDataToWebPage();
+
+    //send data to MQTT host: test.mosquitto.org , topic: smartpoultry
+    sendDataToMQTT();
   
  WiFiClient client = server.available();
   // wait for a client (web browser) to connect
@@ -195,6 +239,10 @@ void sendDataToThingSpeak(){
         postStr +="&field8=";
         postStr += String(humidifierState);
         postStr += "\r\n\r\n";
+		
+		postStr +="&field9=";
+        postStr += String(flameOdor);
+        postStr += "\r\n\r\n";
     
         Serial.println("Sending data to Thingspeak");
         client.print("POST /update HTTP/1.1\n");
@@ -214,40 +262,123 @@ void sendDataToThingSpeak(){
     //client.stop();
   }   
 
+// function to send data to the online platform
+//function to send data to online WebPage
+
+void sendDataToWebPage(){   
+      HTTPClient http;
+    
+    // Your Domain name with URL path or IP address with path
+    http.begin(serverName);
+     
+        // Your Domain name with URL path or IP address with path
+        http.begin(serverName);        
+        // Specify content-type header
+        http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+         while(!timeClient.update()) {
+            timeClient.forceUpdate();
+          }
+            // The formattedDate comes with the following format:
+          // 2018-05-28T16:00:13Z
+          // We need to extract date and time
+          formattedDate = timeClient.getFormattedDate();
+          // Extract date
+          int splitT = formattedDate.indexOf("T");
+          dayStamp = formattedDate.substring(0, splitT);
+        
+          // Extract time
+          timeStamp = formattedDate.substring(splitT+1, formattedDate.length()-1);
+         
+          dateTime=dayStamp+" "+timeStamp;
+          
+          // Prepare your HTTP POST request data
+          String httpRequestData = "api_key=" + apiKeyValue + "&User=" + groupName+ "&location=" + String(location)+ "&dateTime=" + String(dateTime)+ "&temperature=" + String(temperature) + "&temperatureC=" + String(temperatureC) + "&humidity=" + String(humidity) + "&fanState=" + String(fanState) + "&eggRotatorState=" + String(eggRotatorState)+ "&windowsState=" + String(windowsState)+ "&humidifierState=" + String(humidifierState)+ "&flameOdor=" + String(flameOdor)+" ";
+
+		  
+		  
+		  Serial.print("httpRequestData: ");
+          Serial.println(httpRequestData);
+          // Send HTTP POST request
+          int httpResponseCode = http.POST(httpRequestData);
+                    
+          if (httpResponseCode>0) {
+            Serial.print("HTTP Response code: ");
+            Serial.println(httpResponseCode);
+            Serial.print("Data sent to the database");
+          }
+          else {
+            Serial.print("Error code: ");
+            Serial.println(httpResponseCode);
+            Serial.print("Data not sent to the database");
+          }
+          // Free resources
+          http.end();
+}
 
 
-/*
+
 //function for MQTT
-void reconnect() {
-  client.setServer(mqtt_server, mqtt_port);
+void sendDataToMQTT() {  
+  WiFiClient MQTTclient;
+  PubSubClient client(MQTTclient);
   while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
-    client.publish("smart_poultry", "Hello KIC");
+    Serial.print("Attempting MQTT connection...");    
+    client.setServer(mqtt_server, mqtt_port);   
     // Create a random client ID
-    String clientId = "ESP32Client-";
+    String clientId = "19870321";
     clientId += String(random(0xffff), HEX);
     // Attempt to connect
     if (client.connect(clientId.c_str(),MQTT_USER,MQTT_PASSWORD)) {
-      Serial.println("connected");
+      Serial.println("\n Successfully connected to MQTT");
       //Once connected, publish an announcement...
-      client.publish("/temperatureF", temperature);
-       client.publish("/temperatureC", temperatureC);
-       client.publish("/humidity", humidity);
+       client.publish("smartpoultry", "Hello from Smart poultry");
+      String temperatureStr=String(temperature)+" F";
+      String temperatureCStr=String(temperatureC)+" °C";
+      String humidityStr=String(humidity)+" %";
+      String fanStateStr,eggRotatorStateStr,windowsStateStr,humidifierStateStr,flameOdorStr;
+      if(fanState==1) fanStateStr="Fan ON";
+      else fanStateStr="Fan OFF";
+
+      if(eggRotatorState==1) eggRotatorStateStr="Egg Rotator ON";
+      else fanStateStr="Egg Rotator OFF";
+
+       if(windowsState==1) windowsStateStr="Windows ON";
+      else fanStateStr="Windows OFF";
+
+       if(humidifierState==1) humidifierStateStr="Humidifier ON";
+      else fanStateStr="Humidifier OFF";
+
+      if(flameOdor==1) flameOdorStr="FLAME ODOR";
+      else flameOdorStr="NO FLAME ODOR";
+
+      char temperature_buff[20],temperatureC_buff[20],humidity_buff[20],fanState_buff[20],eggRotatorState_buff[20],windowsState_buff[20],humidifierState_buff[20],flameOdor_buff[20];
+      
+       temperatureStr.toCharArray(temperature_buff, temperatureStr.length()+1);
+       temperatureCStr.toCharArray(temperatureC_buff, temperatureCStr.length()+1);
+       humidityStr.toCharArray(humidity_buff, humidityStr.length()+1);
+       fanStateStr.toCharArray(fanState_buff, fanStateStr.length()+1);
+       eggRotatorStateStr.toCharArray(eggRotatorState_buff, eggRotatorStateStr.length()+1);
+       windowsStateStr.toCharArray(windowsState_buff, windowsStateStr.length()+1);
+       humidifierStateStr.toCharArray(humidifierState_buff, humidifierStateStr.length()+1);
+       flameOdorStr.toCharArray(flameOdor_buff, flameOdorStr.length()+1);
+       
+      client.publish("smartpoultry", "Hello From Smart poultry");
+      
+       client.publish("smartpoultry/temperatureF", temperature_buff);
+       client.publish("smartpoultry/temperatureC", temperatureC_buff);
+       client.publish("smartpoultry/humidity", humidity_buff);
+       client.publish("smartpoultry/fanState", fanState_buff);
+       client.publish("smartpoultry/eggRotatorState", eggRotatorState_buff);
+       client.publish("smartpoultry/windowsState", windowsState_buff);
+       client.publish("smartpoultry/humidifierState", humidifierState_buff);
+       client.publish("smartpoultry/flameOdor", flameOdor_buff);
+       
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
       Serial.println(" try again in 5 seconds");
       // Wait 5 seconds before retrying
-      delay(5000);
+      delay(1000);
     }
   }
 }
-
-
-void publishSerialData(char *serialData){
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.publish(MQTT_SERIAL_PUBLISH_CH, serialData);
-}
-*/
