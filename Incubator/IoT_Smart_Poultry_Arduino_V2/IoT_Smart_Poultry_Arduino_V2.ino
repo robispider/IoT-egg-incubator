@@ -282,6 +282,7 @@ loopCounter++;
             }
             lcd.clear();
             currentState="heat";
+            digitalWrite(fan,LOW);
             beginTime= millis();
             break;
             case 2://reset
@@ -381,7 +382,7 @@ loopCounter++;
                 else if (execProfile=="chicken")
                 {
                   RunningSpan=60*60*24*21;//seconds
-                  RotationTime=60*60*20000000;//make the length useless
+                  RotationTime=60*60*2000;//make the length useless
                   RotationSpan=60*60*24*17;
                   tempThreshold=100.5;
                   humidityThreshold=70.0;
