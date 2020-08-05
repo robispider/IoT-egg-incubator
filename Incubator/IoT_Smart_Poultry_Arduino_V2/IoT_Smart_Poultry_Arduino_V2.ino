@@ -5,7 +5,7 @@
 //#include <DueTimer.h>
 
 unsigned long beginTime;
-String execProfile="chicken";
+String execProfile="chick";
 
 #define DHTPIN1 26
 
@@ -65,13 +65,19 @@ void setup() {
    // stepCount=stepsPerRevolution/2;
 
    //Serial.println(Distance());
-
-     myStepper.step(-800);
+float d=(Distance()+Distance())/2;
+    Serial.print(d);
+    
+     myStepper.step(-2000);
+   Serial.println(String(d-((Distance()+Distance())/2)));
+   
+    myStepper.step(2000); 
+    
          lcd.setCursor(2, 1);
   // Print the string 'Hello World!':
   lcd.print("Calibrating");
-    float d=(Distance()+Distance())/2;
-    GoToStepperPosition(5.0);
+    
+    GoToStepperPosition(4.0);
 
    eggRotatorState=0;
 
@@ -194,17 +200,43 @@ bool GoToStepperPosition(float f)
 String currentPos="begin";
 void EggRotate()
 {
+  
+
+   
+    float d=(Distance()+Distance())/2;
   if (currentPos=="begin")
   {
-    GoToStepperPosition(12.0);
+    if (abs(d-4.0)>1.5)
+    {
+      Serial.print("egg rotator position error");
+    }
+    myStepper.step(-2000);
+    //GoToStepperPosition(12.0);
     currentPos="end";
-    
+    d=(Distance()+Distance())/2;
+       if (abs(d-12.5)>1.5)
+    {
+      Serial.print("egg rotator position error");
+    }
   }
   else
   {
-    GoToStepperPosition(5.0);
+    if (abs(d-12.5)>1.5)
+    {
+      Serial.print("egg rotator position error");
+    }
+    
+    myStepper.step(2000); 
+    //GoToStepperPosition(5.0);
     currentPos="begin";
+       if (abs(d-4.0)>1.5)
+    {
+      Serial.print("egg rotator position error");
+    }
+ 
   }
+  
+  //  Serial.println("position:"+String(d));
 }
 
 String currentState="off";
@@ -261,7 +293,7 @@ loopCounter++;
               RunningSpan=300;
               RotationTime=30;
               RotationSpan=240;
-              tempThreshold=100.5;
+              tempThreshold=82.0;
               humidityThreshold=55.0;
               windowTimer=50;
               windowSpan=10;
@@ -378,7 +410,7 @@ loopCounter++;
                   windowTimer=50;
                   windowSpan=15;
                 }
-                else if (execProfile=="chicken")
+                else if (execProfile=="chick")
                 {
                   RunningSpan=60*60*24*21;//seconds
                   RotationTime=60*60*20000000;//make the length useless
