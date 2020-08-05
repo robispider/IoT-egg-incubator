@@ -15,10 +15,8 @@ Specific TOPIC subscribe
       smartpoultry/temperatureF
       smartpoultry/temperatureC
       smartpoultry/humidity
-
-
-       client.publish("smartpoultry/fanState", fanState_buff);
-       client.publish("smartpoultry/eggRotatorState", eggRotatorState_buff);
-       client.publish("smartpoultry/windowsState", windowsState_buff);
-       client.publish("smartpoultry/humidifierState", humidifierState_buff);
-       client.publish("smartpoultry/flameOdor", flameOdor_buff);
+      smartpoultry/fanState
+      smartpoultry/eggRotatorState
+     smartpoultry/windowsState
+     smartpoultry/humidifierState
+    smartpoultry/flameOdor
